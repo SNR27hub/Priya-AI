@@ -45,22 +45,23 @@ jobs:
       - name: 5. Accept Android Licenses
         run: yes | sdkmanager --licenses || true
 
-      - name: 6. Make Gradle Scripts Executable
+      - name: 6. Compile Android APK
         run: |
-          chmod +x ./gradlew || true
-          chmod +x ./android/gradlew || true
+          BUILD_DIR="."
+          if [ -f "./android/build.gradle.kts" ]; then
+            BUILD_DIR="./android"
+          fi
+          echo "Building Android project in $BUILD_DIR"
+          cd "$BUILD_DIR"
 
-      - name: 7. Compile Android APK
-        run: |
-          if [ -d "./android" ]; then
-            cd android
-            gradle assembleRelease || ./gradlew assembleRelease || gradle assembleDebug || ./gradlew assembleDebug
-            cd ..
-          else
-            gradle assembleRelease || ./gradlew assembleRelease || gradle assembleDebug || ./gradlew assembleDebug
+          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
+            gradle wrapper --gradle-version 8.2 || true
           fi
 
-      - name: 8. Find and Rename Output APK
+          chmod +x ./gradlew || true
+          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace || ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
+
+      - name: 7. Find and Rename Output APK
         run: |
           mkdir -p output-apk
           APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
@@ -69,19 +70,19 @@ jobs:
             cp "$APK_PATH" output-apk/PriyaAI-v1.0-release.apk
             ls -lh output-apk/
           else
-            echo "Generating fallback signed APK package"
-            touch output-apk/PriyaAI-v1.0-release.apk
+            echo "Searching for APK in subdirectories..."
+            find . -name "*.apk"
           fi
 
-      - name: 9. Upload APK to GitHub Artifacts (Always Succeeds - Download directly here)
+      - name: 8. Upload APK to GitHub Artifacts (Direct Download)
         uses: actions/upload-artifact@v4
         with:
           name: PriyaAI-v1.0-APK
           path: output-apk/PriyaAI-v1.0-release.apk
           if-no-files-found: warn
 
-      - name: 10. Publish Official GitHub Release
-        continue-on-error: true # Prevents red cross if repository token is read-only
+      - name: 9. Publish Official GitHub Release
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v1.0.\${{ github.run_number }}"
@@ -111,8 +112,30 @@ export const ANDROID_FILES: CodeFileTemplate[] = [
   {
     path: 'android/settings.gradle.kts',
     language: 'kotlin',
-    description: 'Gradle Project Settings',
-    content: `rootProject.name = "PriyaAI"
+    description: 'Gradle Project Settings with Plugin Repositories',
+    content: `pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\\\.android.*")
+                includeGroupByRegex("com\\\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "PriyaAI"
 include(":app")`,
   },
   {

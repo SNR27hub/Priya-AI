@@ -51,7 +51,11 @@ class PriyaBackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
             addAction(Intent.ACTION_POWER_DISCONNECTED)
             addAction(Intent.ACTION_BATTERY_LOW)
         }
-        registerReceiver(batteryReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(batteryReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(batteryReceiver, filter)
+        }
     }
 
     override fun onInit(status: Int) {
@@ -77,7 +81,9 @@ class PriyaBackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(batteryReceiver)
+        try {
+            unregisterReceiver(batteryReceiver)
+        } catch (e: Exception) {}
         tts.stop()
         tts.shutdown()
         super.onDestroy()
