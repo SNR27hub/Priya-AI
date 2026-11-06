@@ -32,6 +32,7 @@ import {
   Moon,
   Layers,
   Heart,
+  Github,
 } from 'lucide-react';
 
 export default function App() {
@@ -396,15 +397,15 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Zone 3: 1 Primary Action (Direct Android APK & Termux Exporter) */}
+        {/* Zone 3: 1 Primary Action (Direct GitHub Auto-Release APK) */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setIsAndroidModalOpen(true)}
             className="flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 rounded-xl shadow-lg shadow-rose-950/40 transition-all active:scale-95 whitespace-nowrap shrink-0"
           >
-            <Smartphone className="w-4 h-4" />
-            <span>Android APK & Termux Release</span>
+            <Github className="w-4 h-4" />
+            <span>GitHub Auto-Release APK</span>
           </button>
         </div>
       </header>
@@ -531,9 +532,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsAndroidModalOpen(true)}
-                  className="text-rose-400 hover:text-rose-300 font-semibold"
+                  className="text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1"
                 >
-                  Export APK Code
+                  <Github className="w-3.5 h-3.5" />
+                  <span>GitHub Auto-Release APK</span>
                 </button>
               </div>
             </div>
