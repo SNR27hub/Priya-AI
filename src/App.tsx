@@ -94,7 +94,7 @@ export default function App() {
     {
       id: 'init-1',
       sender: 'priya',
-      text: 'Namaste! Main Priya hu, aapki personal voice aur mobile assistant! ❤️ Mujhe banane wale vyakti SNR hain. Boliye "Wake up Priya" ya koi bhi phone task boliye, main ready hu!',
+      text: 'Namaste babu! Haanji, main sun rahi hu, boliye kya seva karu aapki? ❤️',
       timestamp: 'Just now',
       mood: 'girlfriend',
     },
@@ -295,9 +295,9 @@ export default function App() {
           setIsScreenOff(false);
         }
         const greetings = [
-          `Haanji ${appSettings.userNickname}! Main jag gayi hu, bataiye kya kaam hai? ❤️`,
+          `Haanji ${appSettings.userNickname}! Sun rahi hu, bataiye kya kaam hai? ❤️`,
           `Suno na! Main sun rahi hu, boliye kya order hai aapka? ✨`,
-          `Aapne bulaya aur Priya hazir ho gayi! Boliye babu? 🌸`,
+          `Haanji babu! Sun rahi hu, boliye? 🌸`,
         ];
         const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
         handlePriyaReply(randomGreeting);
@@ -437,7 +437,7 @@ export default function App() {
             creatorName={appSettings.creatorName}
             onAvatarClick={() => {
               handleSpeak(
-                `Namaste! Main ${appSettings.aiName} hu. Mujhe banane wale vyakti ${appSettings.creatorName} hain! Main aapki har baat sun rahi hu. ❤️`
+                `Haanji ${appSettings.userNickname}! Sun rahi hu, boliye kya seva karu aapki? ❤️`
               );
             }}
           />
@@ -511,6 +511,10 @@ export default function App() {
               onReplaySpeech={handleSpeak}
               aiName={appSettings.aiName}
               creatorName={appSettings.creatorName}
+              selectedVoice={voiceSettings.preferredVoice}
+              onSelectVoice={(voiceName) =>
+                setVoiceSettings((prev) => ({ ...prev, preferredVoice: voiceName }))
+              }
             />
 
             {/* Quick Action Bar below console */}
@@ -615,7 +619,7 @@ export default function App() {
         }}
         onTestVoice={() => {
           handleSpeak(
-            `Yeh ${appSettings.aiName} ki realistic voice test hai! Mujhe ${appSettings.creatorName} ne banaya hai.`
+            `Haanji ${appSettings.userNickname}! Yeh meri realistic voice test hai, main bilkul theek se sun rahi hu!`
           );
         }}
       />

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, PriyaMood } from '../types';
-import { Send, Mic, MicOff, Volume2, Sparkles, Heart } from 'lucide-react';
+import { Send, Mic, MicOff, Volume2, Sparkles, Heart, SlidersHorizontal } from 'lucide-react';
+import { getAllAvailableVoices } from '../utils/speech';
 
 interface VoiceChatConsoleProps {
   messages: ChatMessage[];
@@ -12,6 +13,8 @@ interface VoiceChatConsoleProps {
   onReplaySpeech: (text: string, mood?: PriyaMood) => void;
   aiName: string;
   creatorName: string;
+  selectedVoice: string;
+  onSelectVoice: (voiceName: string) => void;
 }
 
 export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
@@ -24,9 +27,23 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   onReplaySpeech,
   aiName,
   creatorName,
+  selectedVoice,
+  onSelectVoice,
 }) => {
   const [inputText, setInputText] = useState('');
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const list = getAllAvailableVoices();
+    setVoices(list);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        setVoices(getAllAvailableVoices());
+      };
+    }
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,26 +68,61 @@ export const VoiceChatConsole: React.FC<VoiceChatConsoleProps> = ({
   return (
     <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl flex flex-col h-[520px] shadow-xl overflow-hidden">
       {/* Console Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/60">
+      <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950/60">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
-          <h3 className="font-semibold text-white text-sm sm:text-base flex items-center gap-1.5">
+          <h3 className="font-semibold text-white text-xs sm:text-sm flex items-center gap-1.5">
             <span>{aiName} Voice Dialogue</span>
             <span className="text-[10px] text-slate-400 font-normal">· Hindi / Hinglish</span>
           </h3>
         </div>
 
-        {isSpeaking && (
+        <div className="flex items-center gap-2">
+          {/* Quick Voice Picker Toggle */}
           <button
             type="button"
-            onClick={onStopSpeech}
-            className="flex items-center gap-1 text-xs text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 px-3 py-1 rounded-xl transition-colors"
+            onClick={() => setShowVoicePicker(!showVoicePicker)}
+            className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded-xl transition-colors"
+            title="Choose Indian / Hindi Voice"
           >
-            <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
-            <span>Mute Voice</span>
+            <SlidersHorizontal className="w-3 h-3 text-rose-400" />
+            <span>Voice Selector</span>
           </button>
-        )}
+
+          {isSpeaking && (
+            <button
+              type="button"
+              onClick={onStopSpeech}
+              className="flex items-center gap-1 text-xs text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 px-2.5 py-1 rounded-xl transition-colors"
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+              <span>Mute</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Voice Picker Dropdown Bar */}
+      {showVoicePicker && (
+        <div className="bg-slate-950/95 border-b border-slate-800 p-2.5 px-4 flex items-center justify-between gap-3 text-xs animate-fadeIn">
+          <span className="text-slate-400 text-[11px] whitespace-nowrap">Aawaz Chuniye:</span>
+          <select
+            value={selectedVoice}
+            onChange={(e) => {
+              onSelectVoice(e.target.value);
+              onReplaySpeech('Haanji, sun rahi hu! Yeh meri nayi voice hai.');
+            }}
+            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+          >
+            <option value="">Default Best Indian Female (Auto-Selected)</option>
+            {voices.map((v) => (
+              <option key={v.name} value={v.name}>
+                {v.name} ({v.lang})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Messages Feed */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

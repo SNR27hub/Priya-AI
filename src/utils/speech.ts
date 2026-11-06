@@ -1,61 +1,93 @@
 import { PriyaMood, VoiceSettings } from '../types';
 
 let currentUtterance: SpeechSynthesisUtterance | null = null;
+let cachedVoices: SpeechSynthesisVoice[] = [];
 
-// Find best available female voice, prioritizing Hindi or Indian English
-export function getBestFemaleVoice(): SpeechSynthesisVoice | null {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+// Pre-load voices on startup
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  const loadVoices = () => {
+    cachedVoices = window.speechSynthesis.getVoices();
+  };
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+}
 
-  const voices = window.speechSynthesis.getVoices();
+export function getAllAvailableVoices(): SpeechSynthesisVoice[] {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return [];
+  if (cachedVoices.length === 0) {
+    cachedVoices = window.speechSynthesis.getVoices();
+  }
+  return cachedVoices;
+}
+
+// Find the best available female voice, prioritizing realistic Indian Hindi / English natural voices
+export function getBestFemaleVoice(preferredName?: string): SpeechSynthesisVoice | null {
+  const voices = getAllAvailableVoices();
   if (!voices || voices.length === 0) return null;
 
-  // 1. Check for Hindi female voices
-  const hindiVoice = voices.find(
+  // 0. If user specifically selected a preferred voice name
+  if (preferredName) {
+    const matched = voices.find((v) => v.name === preferredName);
+    if (matched) return matched;
+  }
+
+  // 1. Check for Microsoft Natural Online Swara / Neerja / Madhur (top tier realism)
+  const naturalIndian = voices.find(
+    (v) =>
+      (v.lang.toLowerCase().includes('hi') || v.lang.toLowerCase().includes('en-in')) &&
+      v.name.toLowerCase().includes('natural')
+  );
+  if (naturalIndian) return naturalIndian;
+
+  // 2. Hindi female voices (Google हिन्दी, Lekha, Swara, Kalpana)
+  const hindiFemale = voices.find(
     (v) =>
       (v.lang.toLowerCase().includes('hi-in') || v.lang.toLowerCase().includes('hi')) &&
       (v.name.toLowerCase().includes('female') ||
+        v.name.toLowerCase().includes('google') ||
+        v.name.toLowerCase().includes('swara') ||
         v.name.toLowerCase().includes('lekha') ||
-        v.name.toLowerCase().includes('priya') ||
         v.name.toLowerCase().includes('kalpana') ||
-        v.name.toLowerCase().includes('swara'))
+        v.name.toLowerCase().includes('priya') ||
+        v.name.toLowerCase().includes('india'))
   );
-  if (hindiVoice) return hindiVoice;
+  if (hindiFemale) return hindiFemale;
 
-  // 2. Any Hindi voice
+  // 3. Any Hindi voice
   const anyHindi = voices.find((v) => v.lang.toLowerCase().includes('hi'));
   if (anyHindi) return anyHindi;
 
-  // 3. Indian English Female voice (e.g. Heera, Veena, Neerja, Google Indian English)
+  // 4. Indian English Female voice (e.g. Google Indian English, Heera, Veena, Neerja)
   const indianFemale = voices.find(
     (v) =>
       v.lang.toLowerCase().includes('en-in') &&
       (v.name.toLowerCase().includes('female') ||
+        v.name.toLowerCase().includes('google') ||
         v.name.toLowerCase().includes('heera') ||
         v.name.toLowerCase().includes('veena') ||
-        v.name.toLowerCase().includes('neerja') ||
-        v.name.toLowerCase().includes('google'))
+        v.name.toLowerCase().includes('neerja'))
   );
   if (indianFemale) return indianFemale;
 
   const anyIndianEn = voices.find((v) => v.lang.toLowerCase().includes('en-in'));
   if (anyIndianEn) return anyIndianEn;
 
-  // 4. Any English female voice
+  // 5. Pleasant natural female voices (Samantha, Victoria, Karen, Zira)
   const femaleVoice = voices.find(
     (v) =>
       v.name.toLowerCase().includes('female') ||
-      v.name.toLowerCase().includes('zira') ||
+      v.name.toLowerCase().includes('natural') ||
       v.name.toLowerCase().includes('samantha') ||
+      v.name.toLowerCase().includes('zira') ||
       v.name.toLowerCase().includes('karen') ||
-      v.name.toLowerCase().includes('victoria') ||
-      v.name.toLowerCase().includes('natural')
+      v.name.toLowerCase().includes('victoria')
   );
   if (femaleVoice) return femaleVoice;
 
   return voices[0] || null;
 }
 
-// Speak function with emotional modulation
+// Speak function with realistic human-like Indian cadence
 export function speakPriya(
   text: string,
   mood: PriyaMood = 'girlfriend',
@@ -64,7 +96,6 @@ export function speakPriya(
   onStart?: () => void
 ): boolean {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    console.warn('SpeechSynthesis not supported in this environment');
     if (onEnd) onEnd();
     return false;
   }
@@ -72,10 +103,11 @@ export function speakPriya(
   try {
     window.speechSynthesis.cancel();
 
-    // Clean text of emojis and symbols for smoother speech
-    const cleanText = text
-      .replace(/[❤️💖💕😘😜🥺🌸✨⚡👑🥰😍]/g, '')
+    // Clean text of emojis and symbols
+    let cleanText = text
+      .replace(/[❤️💖💕😘😜🥺🌸✨⚡👑🥰😍🤝🎉🔥]/g, '')
       .replace(/\*+/g, '')
+      .replace(/#+/g, '')
       .trim();
 
     if (!cleanText) {
@@ -83,36 +115,47 @@ export function speakPriya(
       return false;
     }
 
+    // Add natural breathing micro-pauses for human rhythm
+    cleanText = cleanText
+      .replace(/([,;])\s*/g, '$1 ')
+      .replace(/([.!?])\s*/g, '$1 ');
+
     const utterance = new SpeechSynthesisUtterance(cleanText);
     currentUtterance = utterance;
 
-    const voice = getBestFemaleVoice();
+    const voice = getBestFemaleVoice(settings?.preferredVoice);
     if (voice) {
       utterance.voice = voice;
+      utterance.lang = voice.lang || 'hi-IN';
     }
 
-    // Mood-specific pitch and speed tuning
+    // Natural human pitch and rate tuning (avoiding robotic squeaks)
     let pitchMultiplier = 1.0;
     let rateMultiplier = 1.0;
 
     switch (mood) {
       case 'girlfriend':
-        pitchMultiplier = 1.15;
-        rateMultiplier = 0.96;
+        // Warm, intimate, affectionate human tone
+        pitchMultiplier = 1.06;
+        rateMultiplier = 0.98;
         break;
       case 'nakhre':
-        pitchMultiplier = 1.25;
-        rateMultiplier = 1.08;
+        // Playful, slightly higher with lively tempo
+        pitchMultiplier = 1.12;
+        rateMultiplier = 1.02;
         break;
       case 'khush':
-        pitchMultiplier = 1.18;
-        rateMultiplier = 1.05;
+        // Cheerful, smiling and expressive
+        pitchMultiplier = 1.08;
+        rateMultiplier = 1.02;
         break;
       case 'emotional':
-        pitchMultiplier = 0.95;
-        rateMultiplier = 0.88;
+        // Gentle, soft-spoken and tender
+        pitchMultiplier = 0.97;
+        rateMultiplier = 0.92;
         break;
       case 'super_assistant':
+        // Crisp, clear and confident
         pitchMultiplier = 1.02;
         rateMultiplier = 1.02;
         break;
@@ -122,8 +165,8 @@ export function speakPriya(
     const baseRate = settings?.rate ?? 1.0;
     const baseVolume = settings?.volume ?? 1.0;
 
-    utterance.pitch = Math.min(2.0, Math.max(0.5, basePitch * pitchMultiplier));
-    utterance.rate = Math.min(2.0, Math.max(0.5, baseRate * rateMultiplier));
+    utterance.pitch = Math.min(1.6, Math.max(0.7, basePitch * pitchMultiplier));
+    utterance.rate = Math.min(1.4, Math.max(0.7, baseRate * rateMultiplier));
     utterance.volume = Math.min(1.0, Math.max(0.0, baseVolume));
 
     utterance.onstart = () => {
@@ -136,7 +179,6 @@ export function speakPriya(
     };
 
     utterance.onerror = (e) => {
-      console.warn('Speech error:', e);
       currentUtterance = null;
       if (onEnd) onEnd();
     };
@@ -144,7 +186,7 @@ export function speakPriya(
     window.speechSynthesis.speak(utterance);
     return true;
   } catch (err) {
-    console.error('Error invoking speech synthesis:', err);
+    console.error('Error in speakPriya:', err);
     if (onEnd) onEnd();
     return false;
   }
@@ -188,7 +230,7 @@ export function createSpeechListener(
     recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'hi-IN'; // Also recognizes Hinglish well
+    recognition.lang = 'hi-IN';
 
     recognition.onresult = (event: any) => {
       let finalTranscript = '';
@@ -221,7 +263,6 @@ export function createSpeechListener(
     };
 
     recognition.onerror = (e: any) => {
-      // Do not crash on non-fatal speech errors like 'no-speech'
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
         console.warn('Speech recognition warning:', e.error);
       }
@@ -233,9 +274,7 @@ export function createSpeechListener(
         restartTimeout = setTimeout(() => {
           try {
             if (isListening) recognition.start();
-          } catch (e) {
-            // Already started or busy
-          }
+          } catch (e) {}
         }, 300);
       }
     };
@@ -248,18 +287,14 @@ export function createSpeechListener(
       isListening = true;
       try {
         recognition?.start();
-      } catch (e) {
-        // Recognition might be running
-      }
+      } catch (e) {}
     },
     stop: () => {
       isListening = false;
       clearTimeout(restartTimeout);
       try {
         recognition?.stop();
-      } catch (e) {
-        // Safe ignore
-      }
+      } catch (e) {}
     },
     isSupported: Boolean(SpeechRecognition),
   };
