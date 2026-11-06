@@ -1,0 +1,6 @@
+{
+  "name": "Priya AI - Voice & Mobile Assistant",
+  "description": "Indian AI Voice Assistant with emotional Hindi/Hinglish girlfriend & super-assistant personality, battery alerts, wake-word detection, mobile automation, and Android APK export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
