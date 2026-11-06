@@ -17,9 +17,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Android default debug keystore
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Auto-sign with debug key so APK can be installed on ANY Android phone without unsigned error!
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -27,6 +35,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
