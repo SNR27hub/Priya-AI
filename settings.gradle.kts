@@ -16,4 +16,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "PriyaAI"
 include(":app")
-project(":app").projectDir = file("android/app")

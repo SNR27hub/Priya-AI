@@ -18,12 +18,10 @@ on:
 
 permissions:
   contents: write
-  actions: write
-  packages: write
 
 jobs:
   build:
-    name: Build Priya AI APK
+    name: Build Priya AI Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -36,75 +34,82 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Set up Gradle CLI
+      - name: 3. Set up Gradle CLI (8.5)
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
 
       - name: 4. Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 5. Accept Android Licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: 6. Compile Android APK
+      - name: 5. Accept Android Licenses & Prepare Debug Keystore
         run: |
-          BUILD_DIR="."
-          if [ -f "./android/build.gradle.kts" ]; then
-            BUILD_DIR="./android"
-          fi
-          echo "Building Android project in $BUILD_DIR"
-          cd "$BUILD_DIR"
-
-          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
-            gradle wrapper --gradle-version 8.2 || true
+          if which sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses || true
+          elif [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
           fi
 
-          chmod +x ./gradlew || true
-          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace || ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+          fi
 
-      - name: 7. Find and Rename Output APK
+      - name: 6. Build Priya AI Debug APK
+        run: |
+          if [ -d "android" ]; then
+            cd android
+            gradle :app:assembleDebug --stacktrace --no-daemon
+            cd ..
+          else
+            gradle :app:assembleDebug --stacktrace --no-daemon
+          fi
+
+      - name: 7. Locate Generated APK
+        id: locate_apk
         run: |
           mkdir -p output-apk
-          APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
-          if [ -n "$APK_PATH" ]; then
-            echo "Successfully found APK at: $APK_PATH"
-            cp "$APK_PATH" output-apk/PriyaAI-v1.0-release.apk
-            ls -lh output-apk/
+          if [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            cp "android/app/build/outputs/apk/debug/app-debug.apk" "output-apk/PriyaAI-v1.0-release.apk"
+          elif [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            cp "app/build/outputs/apk/debug/app-debug.apk" "output-apk/PriyaAI-v1.0-release.apk"
           else
-            echo "Searching for APK in subdirectories..."
-            find . -name "*.apk"
+            APK_FOUND=$(find . -type f -name "*.apk" ! -name "*androidTest*" | head -n 1)
+            if [ -n "$APK_FOUND" ]; then
+              cp "$APK_FOUND" "output-apk/PriyaAI-v1.0-release.apk"
+            else
+              echo "❌ ERROR: No APK produced by the build."
+              exit 1
+            fi
           fi
+          ls -lh output-apk/PriyaAI-v1.0-release.apk
 
-      - name: 8. Upload APK to GitHub Artifacts (Direct Download)
+      - name: 8. Upload Artifact (Guaranteed Download)
         uses: actions/upload-artifact@v4
         with:
           name: PriyaAI-v1.0-APK
           path: output-apk/PriyaAI-v1.0-release.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: 9. Publish Official GitHub Release
+        id: create_release
         continue-on-error: true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v1.0.\${{ github.run_number }}"
-          name: "🌸 Priya AI Assistant v1.0 (Official APK Release)"
-          body: |
-            ## 🌸 Priya AI Assistant - Android Release APK
-            **Creator: SNR**
-            
-            ### 📱 What is included in this APK:
-            - 💖 Realistic Indian Female Voice Assistant with 5 Moods (Girlfriend, Khush, Emotional, Nakhre, Super Assistant)
-            - ⚡ Live Charger Connected, Disconnected, 100% Full & Low Battery Voice Alerts
-            - 🎤 24/7 Background Voice Listener for "Wake up Priya" (even when screen is locked/off)
-            - 💬 WhatsApp auto-send touch & Call Announcer ("Call uthao / Call cut karo")
-            - 🎵 Instant YouTube music playback & notification learner
-            - 🪟 Accessibility Floating Overlay bubble
-            
-            ### 📥 Installation:
-            1. Download \`PriyaAI-v1.0-release.apk\` below.
-            2. Tap to install on your Android phone.
-          files: output-apk/PriyaAI-v1.0-release.apk
         env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}`,
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          TAG="v1.0.\${{ github.run_number }}.\${{ github.run_attempt }}"
+          TITLE="🌸 Priya AI Assistant v1.0 (APK Release)"
+          gh release create "$TAG" output-apk/PriyaAI-v1.0-release.apk \\
+            --title "$TITLE" \\
+            --notes "### 🌸 Priya AI Android APK
+          **Nirmata: SNR**
+          Download \`PriyaAI-v1.0-release.apk\` below and tap to install on your Android device." \\
+            --latest || echo "Notice: Artifact preserved in Actions summary."
+
+      - name: 10. Summary
+        run: |
+          echo "### 🌸 Priya AI APK Build Succeeded! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "Your **PriyaAI-v1.0-release.apk** is ready in the **Artifacts** tab." >> $GITHUB_STEP_SUMMARY`,
 };
 
 export const ANDROID_FILES: CodeFileTemplate[] = [

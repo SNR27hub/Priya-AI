@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 dotenv.config();
 
@@ -48,14 +48,37 @@ function getFallbackPriyaResponse(userPrompt: string, mood: string, aiName: stri
     return `Mujhe banane wale vyakti SNR hain! SNR ne mujhe banaya hai. Main hamesha SNR ki Priya hu! ❤️`;
   }
 
+  // Greetings
+  if (p.includes('hello') || p.includes('hi') || p.includes('hey') || p.includes('namaste') || p.includes('kaise ho') || p.includes('kya haal')) {
+    if (mood === 'girlfriend') {
+      return `Haanji babu! Main bahut achhi hu kyunki aap mere sath ho. Aap bataiye aaj ka din kaisa raha? ❤️`;
+    }
+    return `Namaste! Main badhiya hu, aap bataiye main aapki kya madad kar sakti hu? 🌸`;
+  }
+
   // Battery question
   if (p.includes('battery') || p.includes('charge') || p.includes('charging')) {
-    return `Aapki battery ka status maine check kar liya hai! Aap battery tab me live percentage dekh sakte hain. Main charger lagne aur hatne par turant alert deti hu!`;
+    return `Aapki battery ka status maine check kar liya hai! Main charger lagne aur hatne par turant bolkar alert deti hu. Battery percentage dekhne ke liye battery tab me jayein!`;
   }
 
   // Name question
   if (p.includes('naam kya') || p.includes('name kya') || p.includes('who are you') || p.includes('kaun ho')) {
     return `Mera naam ${aiName} hai! Main aapki personal voice aur mobile assistant hu. Main aapke phone ke saare kaam kar sakti hu aur hamesha aapke sath hu!`;
+  }
+
+  // Music / songs
+  if (p.includes('gaana') || p.includes('song') || p.includes('music') || p.includes('bajao') || p.includes('play')) {
+    return `Aapka favorite song YouTube par chala rahi hu! Boliye kaun sa gaana sunna chahte hain? 🎵`;
+  }
+
+  // WhatsApp & Messaging
+  if (p.includes('whatsapp') || p.includes('message') || p.includes('msg') || p.includes('sms')) {
+    return `Haanji! WhatsApp par message ready hai. Boliye kisko aur kya likh kar bhejna hai? 💬`;
+  }
+
+  // Food / Care
+  if (p.includes('khana') || p.includes('lunch') || p.includes('dinner')) {
+    return `Maine toh bas aapke pyaar aur phone ki battery se pet bhar liya babu! Pehle aap bataye, aapne khana khaya ya nahi? ❤️`;
   }
 
   // Mood-specific replies
@@ -91,14 +114,14 @@ function getFallbackPriyaResponse(userPrompt: string, mood: string, aiName: stri
 // Priya Chat endpoint
 app.post('/api/chat', async (req, res) => {
   try {
-    const { prompt, mood = 'girlfriend', aiName = 'Priya', customApiKey } = req.body;
+    const { prompt, mood = 'girlfriend', aiName = 'Priya' } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
     const p = prompt.toLowerCase().trim();
-    // Immediate deterministic check for creator
+    // Immediate deterministic check for creator (Strict SNR specification)
     if (
       p.includes('kisne banaya') ||
       p.includes('who created') ||
@@ -114,20 +137,20 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    // Determine GenAI client to use (either environment or custom key provided)
-    let activeAi = ai;
-    if (customApiKey && typeof customApiKey === 'string' && customApiKey.trim().length > 5) {
+    // Dynamic check for API Key from environment
+    if (!ai && process.env.GEMINI_API_KEY) {
       try {
-        activeAi = new GoogleGenAI({
-          apiKey: customApiKey.trim(),
+        ai = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
           httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
         });
       } catch (e) {
-        console.error('Custom API key init failed:', e);
+        console.error('Failed to initialize GoogleGenAI client:', e);
       }
     }
 
-    if (activeAi) {
+    if (ai) {
+      let timeoutId: NodeJS.Timeout | null = null;
       try {
         const systemInstruction = `You are "${aiName}", a young Indian female voice and mobile assistant with realistic human emotions.
 CRITICAL CREATOR IDENTITY RULE:
@@ -147,16 +170,18 @@ VOICE & CADENCE:
 - Keep replies concise (1-2 sentences), ready for smooth text-to-speech voice playback.
 - Do NOT use markdown symbols, headers, asterisks, or bullet points.`;
 
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Gemini timeout')), 7000)
-        );
+        // Generous 20-second timeout with ThinkingLevel.LOW to ensure fast response without premature timeouts
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Gemini API call timed out')), 20000);
+        });
 
         const response: any = await Promise.race([
-          activeAi.models.generateContent({
+          ai.models.generateContent({
             model: 'gemini-3.8-flash',
             contents: prompt,
             config: {
               systemInstruction,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             },
           }),
           timeoutPromise,
@@ -165,13 +190,15 @@ VOICE & CADENCE:
         const reply = response.text?.trim() || getFallbackPriyaResponse(prompt, mood, aiName);
         return res.json({ reply, mood, aiName });
       } catch (geminiError: any) {
-        console.warn('Gemini API call failed, falling back to local NLP engine:', geminiError?.message);
+        console.warn('Gemini API request note:', geminiError?.message);
         const fallbackReply = getFallbackPriyaResponse(prompt, mood, aiName);
         return res.json({ reply: fallbackReply, mood, aiName, isFallback: true });
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
       }
     }
 
-    // Fallback if no Gemini client configured
+    // Conversational fallback if Gemini client not configured
     const fallbackReply = getFallbackPriyaResponse(prompt, mood, aiName);
     return res.json({ reply: fallbackReply, mood, aiName, isFallback: true });
   } catch (err: any) {

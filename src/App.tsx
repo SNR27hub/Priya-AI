@@ -246,7 +246,6 @@ export default function App() {
           prompt: text,
           mood,
           aiName: appSettings.aiName,
-          customApiKey: appSettings.customApiKey,
         }),
       });
 

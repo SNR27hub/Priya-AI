@@ -2,7 +2,7 @@ name: Build & Release Priya AI APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -10,101 +10,177 @@ permissions:
 
 jobs:
   build:
-    name: Build Priya AI Android APK
+    name: Build & Publish Debug APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 2. Set up Java 17
+      - name: Set up Temurin Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Set up Gradle CLI
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: 4. Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 5. Accept Android Licenses
+      - name: Verify Java environment
         run: |
-          yes | sdkmanager --licenses || true
-
-      - name: 6. Build Priya AI Debug APK
-        run: |
-          echo "Starting Priya AI APK compilation..."
-          
-          # Try building from root first, then android subdirectory if needed
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew :app:assembleDebug --stacktrace || ./gradlew assembleDebug --stacktrace
-          elif [ -f "./android/gradlew" ]; then
-            cd android
-            chmod +x ./gradlew
-            ./gradlew :app:assembleDebug --stacktrace || ./gradlew assembleDebug --stacktrace
-            cd ..
-          else
-            gradle :app:assembleDebug --stacktrace || gradle assembleDebug --stacktrace
-          fi
-
-      - name: 7. Locate Generated APK
-        id: locate_apk
-        run: |
-          mkdir -p output-apk
-          APK_FILE=$(find . -type f -name "*.apk" ! -name "*androidTest*" | head -n 1)
-          
-          if [ -n "$APK_FILE" ]; then
-            echo "Found APK: $APK_FILE"
-            cp "$APK_FILE" output-apk/PriyaAI-v1.0-release.apk
-            echo "apk_path=output-apk/PriyaAI-v1.0-release.apk" >> $GITHUB_OUTPUT
-            ls -lh output-apk/PriyaAI-v1.0-release.apk
-          else
-            echo "❌ No APK found in output directory."
-            find . -type f -name "*apk" || true
+          java -version
+          echo "JAVA_HOME: $JAVA_HOME"
+          JAVA_MAJOR=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | awk -F '.' '{print $1}')
+          if [ -z "$JAVA_MAJOR" ]; then
+            echo "ERROR: Java version cannot be detected."
             exit 1
           fi
+          echo "Active Java major version: $JAVA_MAJOR"
+          if [ "$JAVA_MAJOR" -lt 17 ]; then
+            echo "ERROR: Java major version must be 17 or newer, detected: $JAVA_MAJOR"
+            exit 1
+          fi
+          echo "Java environment verified successfully."
 
-      - name: 8. Upload Artifact (Guaranteed Download)
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Create temporary debug keystore
+        run: |
+          if [ ! -f "./debug.keystore" ]; then
+            echo "Generating temporary debug keystore..."
+            keytool -genkey -v \
+              -keystore ./debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          else
+            echo "Temporary debug keystore already exists."
+          fi
+          if [ ! -f "./debug.keystore" ]; then
+            echo "ERROR: Failed to create ./debug.keystore"
+            exit 1
+          fi
+          echo "Temporary debug keystore verified."
+
+      - name: Build debug APK
+        run: |
+          gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify debug APK
+        run: |
+          TARGET_APK="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$TARGET_APK" ]; then
+            echo "Expected debug APK is missing at $TARGET_APK. Searching in app/build/outputs/apk:"
+            if [ -d "app/build/outputs/apk" ]; then
+              find app/build/outputs/apk -name "*.apk" || true
+            fi
+            echo "ERROR: app/build/outputs/apk/debug/app-debug.apk does not exist."
+            exit 1
+          fi
+          if [ ! -s "$TARGET_APK" ]; then
+            echo "ERROR: Selected APK is empty."
+            exit 1
+          fi
+          case "$TARGET_APK" in
+            *.apk) ;;
+            *) echo "ERROR: File does not have .apk extension."; exit 1 ;;
+          esac
+          if [ "$TARGET_APK" != "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "ERROR: Selected APK path does not match expected path."
+            exit 1
+          fi
+          echo "Verified exact APK: $TARGET_APK ($(stat -c%s "$TARGET_APK") bytes)"
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PriyaAI-v1.0-APK
-          path: output-apk/PriyaAI-v1.0-release.apk
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: 9. Publish Official GitHub Release
-        id: create_release
+      - name: Prepare APK release asset
+        id: prepare_asset
+        run: |
+          TEMP_DIR=$(mktemp -d -t apk-release-XXXXXX)
+          REPO_RAW="${{ github.repository }}"
+          REPO_SLUG=$(echo "$REPO_RAW" | awk -F '/' '{print $2}' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9._-')
+          ASSET_FILENAME="${REPO_SLUG}-debug-build-${{ github.run_number }}.apk"
+          ASSET_FULLPATH="${TEMP_DIR}/${ASSET_FILENAME}"
+          cp app/build/outputs/apk/debug/app-debug.apk "$ASSET_FULLPATH"
+          echo "asset_path=${ASSET_FULLPATH}" >> $GITHUB_OUTPUT
+          echo "asset_name=${ASSET_FILENAME}" >> $GITHUB_OUTPUT
+          echo "Prepared APK release asset at $ASSET_FULLPATH"
+
+      - name: Publish APK to GitHub Releases
+        id: publish_release
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v1.0.${{ github.run_number }}.${{ github.run_attempt }}"
-          TITLE="🌸 Priya AI Assistant v1.0 (APK Release)"
-          
-          echo "Creating GitHub Release with tag: $TAG"
-          gh release create "$TAG" output-apk/PriyaAI-v1.0-release.apk \
-            --title "$TITLE" \
-            --notes "### 🌸 Priya AI Voice & Mobile Assistant APK
-          **Created by SNR**
-          
-          #### 📱 APK Features:
-          - 💖 Realistic Indian Female Voice Assistant with Girlfriend & 5 Multi-Mood Engine
-          - ⚡ Live Battery Alerts (Charger connected, disconnected, 100% full & low battery alerts)
-          - 🎤 24/7 Background 'Wake up Priya' listener
-          - 💬 WhatsApp Auto-Message Sender & Call Announcer ('Call uthao' / 'Call cut karo')
-          - 🎵 YouTube Music Integration & Notification Auto-Learner
-          - 🪟 Accessibility Floating Head / Overlay Service
-          
-          #### 📥 Installation:
-          Download \`PriyaAI-v1.0-release.apk\` below and tap to install on your Android device." \
-            --latest || echo "Release publishing warning (Artifact is still preserved in Actions summary)"
+          gh --version
+          ASSET_PATH="${{ steps.prepare_asset.outputs.asset_path }}"
+          if [ ! -f "$ASSET_PATH" ] || [ ! -s "$ASSET_PATH" ]; then
+            echo "ERROR: Release asset validation failed."
+            exit 1
+          fi
+          case "$ASSET_PATH" in
+            *.apk) ;;
+            *) echo "ERROR: Asset is not an .apk file."; exit 1 ;;
+          esac
 
-      - name: 10. Summary & Download Instructions
+          RELEASE_TAG="debug-apk-build-${{ github.run_number }}-${{ github.run_attempt }}"
+          RELEASE_TITLE="Debug APK Build #${{ github.run_number }}"
+
+          NOTES=$(cat <<EOF
+          ## 📱 Priya AI Debug APK Build #${{ github.run_number }}
+          - This is an automatically generated debug APK.
+          - The APK was built by GitHub Actions.
+          - GitHub Actions Run Number: ${{ github.run_number }}
+          - GitHub Actions Run Attempt: ${{ github.run_attempt }}
+          - Source Commit SHA: ${{ github.sha }}
+          - The APK is intended for testing.
+          - The APK is not a Play Store production release.
+          - The APK is signed only with a temporary debug keystore.
+          EOF
+          )
+
+          gh release create "$RELEASE_TAG" "$ASSET_PATH" \
+            --title "$RELEASE_TITLE" \
+            --notes "$NOTES" \
+            --target "${{ github.sha }}" \
+            --latest
+
+      - name: Report APK download result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "### 🌸 Priya AI APK Build Succeeded! 🎉" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Your **PriyaAI-v1.0-release.apk** has been built successfully." >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact Download:** Download \`PriyaAI-v1.0-APK\` directly from the **Artifacts** section at the bottom of this run summary." >> $GITHUB_STEP_SUMMARY
-          echo "- **Releases:** Check your repository **Releases** tab for the published release." >> $GITHUB_STEP_SUMMARY
+          ASSET_NAME="${{ steps.prepare_asset.outputs.asset_name }}"
+          RELEASE_TAG="debug-apk-build-${{ github.run_number }}-${{ github.run_attempt }}"
+          
+          if [ "${{ steps.publish_release.outcome }}" = "success" ]; then
+            echo "Confirming published GitHub Release..."
+            gh release view "$RELEASE_TAG" || true
+            RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
+            echo "Release Tag: $RELEASE_TAG"
+            echo "Release Title: Debug APK Build #${{ github.run_number }}"
+            echo "Release Page URL: $RELEASE_URL"
+            echo "Exact APK Asset Filename: $ASSET_NAME"
+            echo "### 🌸 Priya AI APK Published to GitHub Releases! 🎉" >> $GITHUB_STEP_SUMMARY
+            echo "- **Release Page:** [View Release and Download APK]($RELEASE_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "- **APK Filename:** \`$ASSET_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "- You can download the APK directly from the **Assets** section of the release page." >> $GITHUB_STEP_SUMMARY
+            echo "- The normal Actions artifact named \`app-debug-apk\` is also available below as a backup." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "::warning::GitHub Release publishing failed or was skipped. APK build and artifact upload succeeded."
+            echo "The APK build succeeded."
+            echo "The Actions artifact named app-debug-apk remains available."
+            echo "### ⚠️ Priya AI APK Build Succeeded (Artifact Available)" >> $GITHUB_STEP_SUMMARY
+            echo "- The debug APK build succeeded and is preserved." >> $GITHUB_STEP_SUMMARY
+            echo "- **Actions Artifact:** Download \`app-debug-apk\` from the **Artifacts** section at the bottom of this page." >> $GITHUB_STEP_SUMMARY
+            echo "- *Note:* To publish directly to the Releases tab, ensure repository **Settings > Actions > General > Workflow permissions** is set to **'Read and write permissions'**." >> $GITHUB_STEP_SUMMARY
+          fi

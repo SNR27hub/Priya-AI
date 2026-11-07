@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppSettings, VoiceSettings } from '../types';
-import { X, Settings, Volume2, Save, Key, Sparkles, User, Mic } from 'lucide-react';
+import { X, Settings, Volume2, Save, Sparkles, User, Mic } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -185,22 +185,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Gemini AI Key Option */}
+          {/* Gemini AI Engine Status */}
           <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 space-y-2">
-            <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
-              <Key className="w-4 h-4 text-amber-400" />
-              <span>Gemini AI Engine (Optional Custom Key)</span>
-            </span>
-            <p className="text-[11px] text-slate-400">
-              Priya uses server-side Gemini 3.8 Flash automatically with offline Hindi/Hinglish intelligence fallback. If you have your own Gemini key, you can optionally paste it here:
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-rose-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-rose-400" />
+                <span>Gemini 3.8 Flash Engine</span>
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                Active & Server-Side
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Priya's intelligence is powered server-side with Gemini 3.8 Flash, featuring low-latency natural Hindi/Hinglish conversation and offline fallback.
             </p>
-            <input
-              type="password"
-              value={localApp.customApiKey}
-              onChange={(e) => setLocalApp({ ...localApp, customApiKey: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-              placeholder="AIzaSy... (Leave empty for default server engine)"
-            />
           </div>
         </div>
 
