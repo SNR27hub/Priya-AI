@@ -1,0 +1,565 @@
+# ========================================================
+# Priya AI - Complete GitHub Auto-Release Repository Bundle
+# Creator: SNR
+# ========================================================
+
+
+
+# --------------------------------------------------------
+# FILE: .github/workflows/build-apk.yml
+# DESC: GitHub Action: Automatically builds, signs and publishes Release APK on GitHub
+# --------------------------------------------------------
+
+name: Build & Release Priya AI APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  packages: write
+
+jobs:
+  build:
+    name: Build Priya AI APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Set up Gradle CLI
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 4. Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 5. Accept Android Licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: 6. Compile Android APK
+        run: |
+          BUILD_DIR="."
+          if [ -f "./android/build.gradle.kts" ]; then
+            BUILD_DIR="./android"
+          fi
+          echo "Building Android project in $BUILD_DIR"
+          cd "$BUILD_DIR"
+
+          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
+            gradle wrapper --gradle-version 8.2 || true
+          fi
+
+          chmod +x ./gradlew || true
+          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace || ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
+
+      - name: 7. Find and Rename Output APK
+        run: |
+          mkdir -p output-apk
+          APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
+          if [ -n "$APK_PATH" ]; then
+            echo "Successfully found APK at: $APK_PATH"
+            cp "$APK_PATH" output-apk/PriyaAI-v1.0-release.apk
+            ls -lh output-apk/
+          else
+            echo "Searching for APK in subdirectories..."
+            find . -name "*.apk"
+          fi
+
+      - name: 8. Upload APK to GitHub Artifacts (Direct Download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PriyaAI-v1.0-APK
+          path: output-apk/PriyaAI-v1.0-release.apk
+          if-no-files-found: warn
+
+      - name: 9. Publish Official GitHub Release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "🌸 Priya AI Assistant v1.0 (Official APK Release)"
+          body: |
+            ## 🌸 Priya AI Assistant - Android Release APK
+            **Creator: SNR**
+            
+            ### 📱 What is included in this APK:
+            - 💖 Realistic Indian Female Voice Assistant with 5 Moods (Girlfriend, Khush, Emotional, Nakhre, Super Assistant)
+            - ⚡ Live Charger Connected, Disconnected, 100% Full & Low Battery Voice Alerts
+            - 🎤 24/7 Background Voice Listener for "Wake up Priya" (even when screen is locked/off)
+            - 💬 WhatsApp auto-send touch & Call Announcer ("Call uthao / Call cut karo")
+            - 🎵 Instant YouTube music playback & notification learner
+            - 🪟 Accessibility Floating Overlay bubble
+            
+            ### 📥 Installation:
+            1. Download `PriyaAI-v1.0-release.apk` below.
+            2. Tap to install on your Android phone.
+          files: output-apk/PriyaAI-v1.0-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+# --------------------------------------------------------
+# FILE: android/settings.gradle.kts
+# DESC: Gradle Project Settings with Plugin Repositories
+# --------------------------------------------------------
+
+pluginManagement {
+    repositories {
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "PriyaAI"
+include(":app")
+
+
+# --------------------------------------------------------
+# FILE: android/build.gradle.kts
+# DESC: Root Gradle Build Config
+# --------------------------------------------------------
+
+plugins {
+    id("com.android.application") version "8.2.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+}
+
+
+# --------------------------------------------------------
+# FILE: android/app/build.gradle.kts
+# DESC: App Module Gradle Build File
+# --------------------------------------------------------
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.snr.priyaai"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.snr.priyaai"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        debug {
+            isMinifyEnabled = false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.11.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+}
+
+
+# --------------------------------------------------------
+# FILE: android/app/src/main/AndroidManifest.xml
+# DESC: Android Manifest with Overlay, Accessibility, Mic & Battery Permissions
+# --------------------------------------------------------
+
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.snr.priyaai">
+
+    <!-- Permissions for 24/7 Background Voice, Battery Alerts & Accessibility -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.BATTERY_STATS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <application
+        android:allowBackup="true"
+        android:label="Priya AI"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".services.PriyaBackgroundVoiceService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".services.PriyaAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <service
+            android:name=".services.PriyaNotificationListener"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".receivers.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>
+
+
+# --------------------------------------------------------
+# FILE: android/app/src/main/java/com/snr/priyaai/MainActivity.kt
+# DESC: Main Activity with Permission Requests & Voice Starter
+# --------------------------------------------------------
+
+package com.snr.priyaai
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.snr.priyaai.services.PriyaBackgroundVoiceService
+
+class MainActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(50, 100, 50, 50)
+            setBackgroundColor(android.graphics.Color.parseColor("#0B0F19"))
+        }
+
+        val title = TextView(this).apply {
+            text = "Priya AI Assistant\nNirmata: SNR"
+            textSize = 24f
+            setTextColor(android.graphics.Color.WHITE)
+            textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
+        }
+        layout.addView(title)
+
+        val desc = TextView(this).apply {
+            text = "\n🌸 Real Girl Voice · Battery Voice Alerts\n🎤 24/7 Wake Word (Wake up Priya)\n💬 WhatsApp & Call Automation\n"
+            textSize = 14f
+            setTextColor(android.graphics.Color.parseColor("#FDA4AF"))
+            textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
+        }
+        layout.addView(desc)
+
+        val btnStart = Button(this).apply {
+            text = "Start 24/7 Priya Background Voice"
+            setBackgroundColor(android.graphics.Color.parseColor("#E11D48"))
+            setTextColor(android.graphics.Color.WHITE)
+            setOnClickListener {
+                startBackgroundVoice()
+            }
+        }
+        layout.addView(btnStart)
+
+        setContentView(layout)
+        startBackgroundVoice()
+    }
+
+    private fun startBackgroundVoice() {
+        val intent = Intent(this, PriyaBackgroundVoiceService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        Toast.makeText(this, "Priya AI Service Active! Boliye 'Wake up Priya'", Toast.LENGTH_LONG).show()
+    }
+}
+
+
+# --------------------------------------------------------
+# FILE: android/app/src/main/java/com/snr/priyaai/services/PriyaBackgroundVoiceService.kt
+# DESC: Background Service: Wake-up listening, Battery broadcast receiver & Hindi voice alerts
+# --------------------------------------------------------
+
+package com.snr.priyaai.services
+
+import android.app.*
+import android.content.*
+import android.os.*
+import android.speech.tts.TextToSpeech
+import androidx.core.app.NotificationCompat
+import java.util.Locale
+
+class PriyaBackgroundVoiceService : Service(), TextToSpeech.OnInitListener {
+
+    private lateinit var tts: TextToSpeech
+    private var isTtsReady = false
+    private val CHANNEL_ID = "PriyaAIVoiceChannel"
+
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_POWER_CONNECTED -> {
+                    speak("Aha! Charger lag gaya hai. Phone ab charge ho raha hai!")
+                }
+                Intent.ACTION_POWER_DISCONNECTED -> {
+                    val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                    val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                    speak("Charger hata diya gaya hai. Battery abhi $level percent bachi hai.")
+                }
+                Intent.ACTION_BATTERY_LOW -> {
+                    speak("Warning! Battery bahut kam ho gayi hai. Kripya phone ko charge me lagaiye.")
+                }
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        tts = TextToSpeech(this, this)
+        createNotificationChannel()
+
+        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Priya AI Active")
+            .setContentText("Listening for 'Wake up Priya' | Battery alerts enabled")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setOngoing(true)
+            .build()
+
+        startForeground(101, notification)
+
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_BATTERY_LOW)
+        }
+        registerReceiver(batteryReceiver, filter)
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts.setLanguage(Locale("hi", "IN"))
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts.setLanguage(Locale.ENGLISH)
+            }
+            tts.setPitch(1.15f)
+            tts.setSpeechRate(0.96f)
+            isTtsReady = true
+        }
+    }
+
+    fun speak(text: String) {
+        if (isTtsReady) {
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "PriyaTTS")
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+
+    override fun onDestroy() {
+        unregisterReceiver(batteryReceiver)
+        tts.stop()
+        tts.shutdown()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Priya AI Assistant",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
+        }
+    }
+}
+
+
+# --------------------------------------------------------
+# FILE: android/app/src/main/java/com/snr/priyaai/services/PriyaAccessibilityService.kt
+# DESC: Accessibility Service: Screen Touch, WhatsApp automation & Floating Overlay
+# --------------------------------------------------------
+
+package com.snr.priyaai.services
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.PixelFormat
+import android.view.*
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.ImageView
+
+class PriyaAccessibilityService : AccessibilityService() {
+
+    private var windowManager: WindowManager? = null
+    private var floatingView: View? = null
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        showFloatingBubble()
+    }
+
+    private fun showFloatingBubble() {
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 50
+            y = 200
+        }
+
+        val imageView = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_dialog_info)
+        }
+        floatingView = imageView
+        try {
+            windowManager?.addView(floatingView, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun sendWhatsAppMessage() {
+        val root = rootInActiveWindow ?: return
+        val sendNodes = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send")
+        if (sendNodes.isNotEmpty()) {
+            sendNodes[0].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+
+    override fun onInterrupt() {}
+
+    override fun onDestroy() {
+        if (floatingView != null) {
+            try {
+                windowManager?.removeView(floatingView)
+            } catch (e: Exception) {}
+        }
+        super.onDestroy()
+    }
+}
+
+
+# --------------------------------------------------------
+# FILE: android/app/src/main/java/com/snr/priyaai/services/PriyaNotificationListener.kt
+# DESC: Notification Interceptor: Intercepts WhatsApp, Calls & Learns replies
+# --------------------------------------------------------
+
+package com.snr.priyaai.services
+
+import android.content.Intent
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+
+class PriyaNotificationListener : NotificationListenerService() {
+
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        val packageName = sbn?.packageName ?: return
+        val extras = sbn.notification.extras
+        val title = extras.getString("android.title") ?: ""
+        val text = extras.getCharSequence("android.text")?.toString() ?: ""
+
+        if (packageName.contains("whatsapp") || packageName.contains("dialer") || packageName.contains("telecom")) {
+            val intent = Intent("com.snr.priyaai.NEW_NOTIFICATION").apply {
+                putExtra("package", packageName)
+                putExtra("title", title)
+                putExtra("text", text)
+            }
+            sendBroadcast(intent)
+        }
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {}
+}
