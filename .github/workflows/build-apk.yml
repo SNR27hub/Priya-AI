@@ -7,12 +7,10 @@ on:
 
 permissions:
   contents: write
-  actions: write
-  packages: write
 
 jobs:
   build:
-    name: Build Priya AI APK
+    name: Build Priya AI Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -32,67 +30,81 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: 5. Accept Android Licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: 6. Compile Android APK
         run: |
-          BUILD_DIR="."
-          if [ -f "./android/build.gradle.kts" ]; then
-            BUILD_DIR="./android"
+          yes | sdkmanager --licenses || true
+
+      - name: 6. Build Priya AI Debug APK
+        run: |
+          echo "Starting Priya AI APK compilation..."
+          
+          # Try building from root first, then android subdirectory if needed
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew :app:assembleDebug --stacktrace || ./gradlew assembleDebug --stacktrace
+          elif [ -f "./android/gradlew" ]; then
+            cd android
+            chmod +x ./gradlew
+            ./gradlew :app:assembleDebug --stacktrace || ./gradlew assembleDebug --stacktrace
+            cd ..
+          else
+            gradle :app:assembleDebug --stacktrace || gradle assembleDebug --stacktrace
           fi
-          echo "Building Android project in $BUILD_DIR"
-          cd "$BUILD_DIR"
 
-          # Ensure wrapper exists
-          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
-            gradle wrapper --gradle-version 8.2 || true
-          fi
-
-          chmod +x ./gradlew || true
-          # Build APK with debug/release signing
-          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace || ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
-
-      - name: 7. Find and Rename Output APK
+      - name: 7. Locate Generated APK
+        id: locate_apk
         run: |
           mkdir -p output-apk
-          APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
-          if [ -n "$APK_PATH" ]; then
-            echo "Successfully found APK at: $APK_PATH"
-            cp "$APK_PATH" output-apk/PriyaAI-v1.0-release.apk
-            ls -lh output-apk/
+          APK_FILE=$(find . -type f -name "*.apk" ! -name "*androidTest*" | head -n 1)
+          
+          if [ -n "$APK_FILE" ]; then
+            echo "Found APK: $APK_FILE"
+            cp "$APK_FILE" output-apk/PriyaAI-v1.0-release.apk
+            echo "apk_path=output-apk/PriyaAI-v1.0-release.apk" >> $GITHUB_OUTPUT
+            ls -lh output-apk/PriyaAI-v1.0-release.apk
           else
-            echo "Searching for APK in subdirectories..."
-            find . -name "*.apk"
+            echo "❌ No APK found in output directory."
+            find . -type f -name "*apk" || true
+            exit 1
           fi
 
-      - name: 8. Upload APK to GitHub Artifacts (Direct Download)
+      - name: 8. Upload Artifact (Guaranteed Download)
         uses: actions/upload-artifact@v4
         with:
           name: PriyaAI-v1.0-APK
           path: output-apk/PriyaAI-v1.0-release.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: 9. Publish Official GitHub Release
+        id: create_release
         continue-on-error: true
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v1.0.${{ github.run_number }}"
-          name: "🌸 Priya AI Assistant v1.0 (Official APK Release)"
-          body: |
-            ## 🌸 Priya AI Assistant - Android Release APK
-            **Creator: SNR**
-            
-            ### 📱 What is included in this APK:
-            - 💖 Realistic Indian Female Voice Assistant with 5 Moods (Girlfriend, Khush, Emotional, Nakhre, Super Assistant)
-            - ⚡ Live Charger Connected, Disconnected, 100% Full & Low Battery Voice Alerts
-            - 🎤 24/7 Background Voice Listener for "Wake up Priya" (even when screen is locked/off)
-            - 💬 WhatsApp auto-send touch & Call Announcer ("Call uthao / Call cut karo")
-            - 🎵 Instant YouTube music playback & notification learner
-            - 🪟 Accessibility Floating Overlay bubble
-            
-            ### 📥 Installation:
-            1. Download `PriyaAI-v1.0-release.apk` below.
-            2. Tap to install on your Android phone.
-          files: output-apk/PriyaAI-v1.0-release.apk
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}.${{ github.run_attempt }}"
+          TITLE="🌸 Priya AI Assistant v1.0 (APK Release)"
+          
+          echo "Creating GitHub Release with tag: $TAG"
+          gh release create "$TAG" output-apk/PriyaAI-v1.0-release.apk \
+            --title "$TITLE" \
+            --notes "### 🌸 Priya AI Voice & Mobile Assistant APK
+          **Created by SNR**
+          
+          #### 📱 APK Features:
+          - 💖 Realistic Indian Female Voice Assistant with Girlfriend & 5 Multi-Mood Engine
+          - ⚡ Live Battery Alerts (Charger connected, disconnected, 100% full & low battery alerts)
+          - 🎤 24/7 Background 'Wake up Priya' listener
+          - 💬 WhatsApp Auto-Message Sender & Call Announcer ('Call uthao' / 'Call cut karo')
+          - 🎵 YouTube Music Integration & Notification Auto-Learner
+          - 🪟 Accessibility Floating Head / Overlay Service
+          
+          #### 📥 Installation:
+          Download \`PriyaAI-v1.0-release.apk\` below and tap to install on your Android device." \
+            --latest || echo "Release publishing warning (Artifact is still preserved in Actions summary)"
+
+      - name: 10. Summary & Download Instructions
+        run: |
+          echo "### 🌸 Priya AI APK Build Succeeded! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Your **PriyaAI-v1.0-release.apk** has been built successfully." >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact Download:** Download \`PriyaAI-v1.0-APK\` directly from the **Artifacts** section at the bottom of this run summary." >> $GITHUB_STEP_SUMMARY
+          echo "- **Releases:** Check your repository **Releases** tab for the published release." >> $GITHUB_STEP_SUMMARY
